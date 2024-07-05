@@ -6,13 +6,14 @@ let clients = [];
 let gameState = {
   board: Array(9).fill(''),
   currentPlayer: 'X',
-  players: {}
+  players: {},
+  scores: {}
 };
 
 server.on('connection', (ws) => {
-    ws.id = generateUniqueId();
-    clients.push(ws);
-    console.log('New client connected with ID:', ws.id);
+  ws.id = generateUniqueId();
+  clients.push(ws);
+  console.log('New client connected with ID:', ws.id);
 
   if (clients.length > 2) {
     ws.send(JSON.stringify({ type: 'ROOM_FULL' }));
@@ -21,6 +22,7 @@ server.on('connection', (ws) => {
   }
 
   assignSymbols();
+  initializeScores();
   notifyPlayers();
 
   ws.on('message', (message) => {
@@ -28,24 +30,27 @@ server.on('connection', (ws) => {
     const { type, payload } = JSON.parse(message);
 
     if (type === 'MOVE') {
-      gameState = payload;
-      console.log('Move received:', gameState);
-      notifyPlayers();
+      gameState.board = payload.board;
+      gameState.currentPlayer = payload.currentPlayer;
+      const winner = checkWinner();
+      if (winner) {
+        gameState.scores[winner]++;
+        notifyPlayers();
+        setTimeout(resetGame, 2000); // Reinicia o jogo após 2 segundos
+      } else {
+        notifyPlayers();
+      }
     } else if (type === 'RESET') {
-      gameState = {
-        board: Array(9).fill(''),
-        currentPlayer: 'X',
-        players: {}
-      };
-      assignSymbols();
-      console.log('Game reset');
-      notifyPlayers();
+      resetGame();
     }
   });
 
   ws.on('close', () => {
     clients = clients.filter(client => client !== ws);
+    if (clients.length < 2) {
       gameState.players = {};
+      gameState.scores = {};
+    }
     notifyPlayers();
     console.log('Client disconnected with ID:', ws.id);
   });
@@ -60,6 +65,14 @@ function assignSymbols() {
   });
 }
 
+function initializeScores() {
+  clients.forEach(client => {
+    if (!(client.id in gameState.scores)) {
+      gameState.scores[client.id] = 0;
+    }
+  });
+}
+
 function notifyPlayers() {
   clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
@@ -67,6 +80,29 @@ function notifyPlayers() {
       client.send(JSON.stringify({ type: 'USER_COUNT', payload: clients.length }));
     }
   });
+}
+
+function checkWinner() {
+  const winningCombinations = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8], // linhas
+    [0, 3, 6], [1, 4, 7], [2, 5, 8], // colunas
+    [0, 4, 8], [2, 4, 6] // diagonais
+  ];
+  for (const combination of winningCombinations) {
+    const [a, b, c] = combination;
+    if (gameState.board[a] && gameState.board[a] === gameState.board[b] && gameState.board[a] === gameState.board[c]) {
+      const winnerId = Object.keys(gameState.players).find(key => gameState.players[key] === gameState.board[a]);
+      console.log(`Player with ID ${winnerId} won`);
+      return winnerId;
+    }
+  }
+  return null;
+}
+
+function resetGame() {
+  gameState.board = Array(9).fill('');
+  gameState.currentPlayer = 'X';
+  notifyPlayers();
 }
 
 function generateUniqueId() {
