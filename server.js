@@ -10,13 +10,13 @@ let gameState = {
 };
 
 server.on('connection', (ws) => {
-  ws.id = generateUniqueId();
-  clients.push(ws);
-  console.log('New client connected with ID:', ws.id);
+    ws.id = generateUniqueId();
+    clients.push(ws);
+    console.log('New client connected with ID:', ws.id);
 
   if (clients.length > 2) {
     ws.send(JSON.stringify({ type: 'ROOM_FULL' }));
-    ws.close();
+    closeConnectionById(ws.id);
     return;
   }
 
@@ -45,9 +45,7 @@ server.on('connection', (ws) => {
 
   ws.on('close', () => {
     clients = clients.filter(client => client !== ws);
-    if (clients.length < 2) {
       gameState.players = {};
-    }
     notifyPlayers();
     console.log('Client disconnected with ID:', ws.id);
   });
@@ -73,6 +71,18 @@ function notifyPlayers() {
 
 function generateUniqueId() {
   return '_' + Math.random().toString(36).substr(2, 9);
+}
+
+function closeConnectionById(id) {
+  const client = clients.find(client => client.id === id);
+  if (client) {
+    client.close();
+    clients = clients.filter(c => c !== client);
+    console.log(`Closed connection for client with ID: ${id}`);
+    notifyPlayers();
+  } else {
+    console.log(`Client with ID: ${id} not found`);
+  }
 }
 
 console.log('WebSocket server started on ws://localhost:8080');
